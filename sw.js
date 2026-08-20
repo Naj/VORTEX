@@ -1,4 +1,4 @@
-const CACHE = 'vortex-v2';
+const CACHE = 'vortex-v9';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', e => {
