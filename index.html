@@ -467,7 +467,7 @@ button.bc-item:hover{background:rgba(var(--a1),.4);}
       <span class="th-label">Animation de fond</span>
       <div class="th-row">
         <button class="sc-opt" data-scene="nebula" onclick="setScene('nebula')">🌌 Nébuleuse<span>fond seul</span></button>
-        <button class="sc-opt" data-scene="vortex" onclick="setScene('vortex')">🌀 Trou de ver<span>portail en spirale</span></button>
+        <button class="sc-opt" data-scene="solar" onclick="setScene('solar')">🪐 Système solaire<span>le Soleil et ses planètes</span></button>
         <button class="sc-opt" data-scene="orb" onclick="setScene('orb')">🔮 Orbe d'énergie<span>sphère en dérive</span></button>
         <button class="sc-opt" data-scene="reactor" onclick="setScene('reactor')">⚙️ Réacteur<span>anneaux et arcs</span></button>
       </div>
@@ -624,7 +624,7 @@ button.bc-item:hover{background:rgba(var(--a1),.4);}
 
   /* ═══ SCÈNES D'ARRIÈRE-PLAN ═══ */
   let scene='nebula',T=0;
-  try{scene=localStorage.getItem('vortex-scene')||'nebula';}catch(e){}
+  try{scene=localStorage.getItem('vortex-scene')||'nebula';if(scene==='vortex')scene='solar';}catch(e){}
   window._setScene=s=>{scene=s;};
 
   /* étincelle à 4 branches */
@@ -641,49 +641,95 @@ button.bc-item:hover{background:rgba(var(--a1),.4);}
     ctx.fill();ctx.restore();
   }
 
-  /* 1 · VORTEX — trou de ver / horizon des événements */
-  function drawVortex(){
-    const cx=W/2,cy=H/2,R=Math.min(W,H)*.36,o=dark?1:.6;
-    const halo=ctx.createRadialGradient(cx,cy,R*.08,cx,cy,R*1.6);
-    halo.addColorStop(0,`rgba(${A2},${.20*o})`);
-    halo.addColorStop(.45,`rgba(${A1},${.13*o})`);
-    halo.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=halo;ctx.beginPath();ctx.arc(cx,cy,R*1.6,0,Math.PI*2);ctx.fill();
-    /* bras spiralés du disque */
-    const arms=4,pts=80;
-    for(let a=0;a<arms;a++){
-      ctx.beginPath();
-      for(let i=0;i<pts;i++){
-        const f=i/pts,r=R*(.14+f*1.02),th=T*.55+a*(Math.PI*2/arms)+f*4.6;
-        const x=cx+Math.cos(th)*r,y=cy+Math.sin(th)*r*.46;
-        i?ctx.lineTo(x,y):ctx.moveTo(x,y);
-      }
-      ctx.strokeStyle=`rgba(${A2},${.20*o})`;ctx.lineWidth=1.5;ctx.stroke();
+  /* 1 · SYSTÈME SOLAIRE — le Soleil et ses huit planètes */
+  const PLANETS=[
+    {n:'Mercure',d:.155,rr:2.6,c:'#9E9184',c2:'#5C544B',s:1.62},
+    {n:'Vénus',  d:.225,rr:4.3,c:'#E8CDA0',c2:'#9C7A48',s:1.18},
+    {n:'Terre',  d:.305,rr:4.7,c:'#4A8BE0',c2:'#1E4C86',s:1.00,moon:true},
+    {n:'Mars',   d:.385,rr:3.5,c:'#C9603A',c2:'#7A3218',s:.80},
+    {n:'Jupiter',d:.545,rr:9.6,c:'#D9AC80',c2:'#8C6141',s:.44,bands:true},
+    {n:'Saturne',d:.675,rr:8.2,c:'#E4CB92',c2:'#9A7F49',s:.33,ring:true},
+    {n:'Uranus', d:.805,rr:6.1,c:'#96D6DE',c2:'#48858F',s:.23},
+    {n:'Neptune',d:.915,rr:5.9,c:'#4560C6',c2:'#1F2E76',s:.18}
+  ];
+  const TILT=.42; /* aplatissement des orbites (vue de biais) */
+
+  function planetBody(x,y,rad,c,c2,tag,ang){
+    /* ombrage : éclairé du côté du Soleil */
+    const g=ctx.createRadialGradient(x-rad*.35,y-rad*.35,rad*.1,x,y,rad);
+    g.addColorStop(0,c);g.addColorStop(1,c2);
+    ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+    if(tag==='bands'){
+      ctx.save();ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.clip();
+      ctx.globalAlpha=.30;ctx.fillStyle=c2;
+      for(let b=-2;b<=2;b++){ctx.fillRect(x-rad,y+b*rad*.34-rad*.07,rad*2,rad*.15);}
+      ctx.restore();ctx.globalAlpha=1;
     }
-    /* anneaux du disque d'accrétion */
-    for(let k=1;k<=5;k++){
-      const rr=R*(.26+k*.17);
-      ctx.beginPath();ctx.ellipse(cx,cy,rr,rr*.46,0,0,Math.PI*2);
-      ctx.strokeStyle=`rgba(${A1},${.09*o})`;ctx.lineWidth=1;ctx.stroke();
+    if(tag==='ring'){
+      ctx.save();ctx.translate(x,y);ctx.rotate(-.42);
+      ctx.beginPath();ctx.ellipse(0,0,rad*2.05,rad*.62,0,0,Math.PI*2);
+      ctx.strokeStyle='rgba(228,203,146,.62)';ctx.lineWidth=Math.max(1.2,rad*.3);ctx.stroke();
+      ctx.beginPath();ctx.ellipse(0,0,rad*1.55,rad*.44,0,0,Math.PI*2);
+      ctx.strokeStyle='rgba(228,203,146,.34)';ctx.lineWidth=Math.max(.8,rad*.16);ctx.stroke();
+      ctx.restore();
     }
-    /* matière happée vers le centre */
-    for(let i=0;i<34;i++){
-      const seed=i*2.399,f=((T*.14+i*.031)%1);
-      const r=R*(1.15-f*1.02),th=seed+T*(.7+ (i%5)*.06)+f*5;
-      const x=cx+Math.cos(th)*r,y=cy+Math.sin(th)*r*.46;
-      const al=(f<.12?f/.12:1)*(1-f*.55)*o;
-      const g=ctx.createRadialGradient(x,y,0,x,y,3.6);
-      g.addColorStop(0,`rgba(${i%3?A2:A4},${.9*al})`);g.addColorStop(1,`rgba(${A1},0)`);
-      ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,3.6,0,Math.PI*2);ctx.fill();
+  }
+
+  function drawSolar(){
+    const cx=W/2,cy=H/2,base=Math.min(W,H)*.52,o=dark?1:.72;
+    const k=Math.max(.62,Math.min(W,H)/820); /* échelle des astres */
+    const pulse=.5+.5*Math.sin(T*1.1);
+
+    /* orbites (teintées par le thème) */
+    PLANETS.forEach(p=>{
+      const rx=base*p.d;
+      ctx.beginPath();ctx.ellipse(cx,cy,rx,rx*TILT,0,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(${A1},${.13*o})`;ctx.lineWidth=1;ctx.stroke();
+    });
+
+    /* positions */
+    const pos=PLANETS.map((p,i)=>{
+      const a=T*p.s*.36+i*1.27;
+      const rx=base*p.d;
+      return{p,a,x:cx+Math.cos(a)*rx,y:cy+Math.sin(a)*rx*TILT,rad:p.rr*k,back:Math.sin(a)<0};
+    });
+
+    /* planètes situées derrière le Soleil */
+    pos.filter(q=>q.back).forEach(q=>drawPlanet(q,o,k));
+
+    /* couronne solaire */
+    const halo=ctx.createRadialGradient(cx,cy,0,cx,cy,base*.42);
+    halo.addColorStop(0,`rgba(255,214,120,${(.34+pulse*.10)*o})`);
+    halo.addColorStop(.35,`rgba(255,150,40,${.14*o})`);
+    halo.addColorStop(1,'rgba(255,120,0,0)');
+    ctx.fillStyle=halo;ctx.beginPath();ctx.arc(cx,cy,base*.42,0,Math.PI*2);ctx.fill();
+
+    /* Soleil */
+    const sr=17*k+pulse*1.6*k;
+    const sun=ctx.createRadialGradient(cx-sr*.2,cy-sr*.2,sr*.15,cx,cy,sr);
+    sun.addColorStop(0,'#FFFDF0');sun.addColorStop(.45,'#FFD34D');sun.addColorStop(1,'#FF8A1E');
+    ctx.beginPath();ctx.arc(cx,cy,sr,0,Math.PI*2);ctx.fillStyle=sun;ctx.fill();
+
+    /* planètes situées devant */
+    pos.filter(q=>!q.back).forEach(q=>drawPlanet(q,o,k));
+  }
+
+  function drawPlanet(q,o,k){
+    const {p,x,y,rad,a}=q;
+    ctx.save();
+    ctx.globalAlpha=o*(q.back?.72:1);
+    /* léger halo pour détacher du fond */
+    const gl=ctx.createRadialGradient(x,y,rad*.6,x,y,rad*2.6);
+    gl.addColorStop(0,`rgba(${A4},.16)`);gl.addColorStop(1,`rgba(${A4},0)`);
+    ctx.fillStyle=gl;ctx.beginPath();ctx.arc(x,y,rad*2.6,0,Math.PI*2);ctx.fill();
+    planetBody(x,y,rad,p.c,p.c2,p.ring?'ring':(p.bands?'bands':''),a);
+    /* la Lune */
+    if(p.moon){
+      const ma=T*2.6+1.1,mr=rad*2.9;
+      ctx.beginPath();ctx.arc(x+Math.cos(ma)*mr,y+Math.sin(ma)*mr*.7,Math.max(1,rad*.28),0,Math.PI*2);
+      ctx.fillStyle='#CFCFCF';ctx.fill();
     }
-    /* cœur sombre + couronne */
-    const core=ctx.createRadialGradient(cx,cy,0,cx,cy,R*.34);
-    core.addColorStop(0,`rgba(${DEEP},.96)`);
-    core.addColorStop(.72,`rgba(${DEEP},.82)`);
-    core.addColorStop(1,`rgba(${DEEP},0)`);
-    ctx.fillStyle=core;ctx.beginPath();ctx.arc(cx,cy,R*.34,0,Math.PI*2);ctx.fill();
-    ctx.beginPath();ctx.arc(cx,cy,R*.235,0,Math.PI*2);
-    ctx.strokeStyle=`rgba(${A4},${(.24+.10*Math.sin(T*1.7))*o})`;ctx.lineWidth=2;ctx.stroke();
+    ctx.restore();
   }
 
   /* 2 · ORBE D'ÉNERGIE — sphère lumineuse en dérive */
@@ -779,7 +825,7 @@ button.bc-item:hover{background:rgba(var(--a1),.4);}
     }
     nodes.forEach(n=>{n.x+=n.vx;n.y+=n.vy;if(n.x<0||n.x>W)n.vx*=-1;if(n.y<0||n.y>H)n.vy*=-1;n.pulse+=.018;});
     T+=.016;
-    if(scene==='vortex')drawVortex();
+    if(scene==='solar')drawSolar();
     else if(scene==='orb')drawOrb();
     else if(scene==='reactor')drawReactor();
     edges=[];
@@ -873,9 +919,10 @@ function applyTheme(){
 function setTheme(t){if(!THEMES[t])return;theme=t;localStorage.setItem(THEME_KEY,t);applyTheme();toast(`✓ Thème ${THEMES[t].label}`);}
 
 /* ═══ ANIMATION DE FOND ═══ */
-const SCENES={nebula:'Nébuleuse',vortex:'Trou de ver',orb:"Orbe d'énergie",reactor:'Réacteur'};
+const SCENES={nebula:'Nébuleuse',solar:'Système solaire',orb:"Orbe d'énergie",reactor:'Réacteur'};
 const SCENE_KEY='vortex-scene';
 let bgScene=localStorage.getItem(SCENE_KEY)||'nebula';
+if(bgScene==='vortex')bgScene='solar';           /* ancienne scène remplacée */
 if(!SCENES[bgScene])bgScene='nebula';
 function applyScene(){
   document.querySelectorAll('.sc-opt').forEach(b=>b.classList.toggle('active',b.dataset.scene===bgScene));
