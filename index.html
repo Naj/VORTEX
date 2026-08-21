@@ -107,7 +107,7 @@ body.light #bgOv{background:rgba(var(--lite1),.24);}
 @keyframes warpsuck{to{transform:scale(.12);filter:blur(12px);opacity:0;}}
 
 /* ── HEADER ── */
-header{position:sticky;top:0;z-index:100;min-height:56px;background:linear-gradient(120deg,rgb(var(--a1)),rgb(var(--a1d)),rgb(var(--shadow)),rgb(var(--a2))22,rgb(var(--a1)));background-size:300% 300%;animation:headerflow 14s ease-in-out infinite;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:8px;box-shadow:0 2px 20px rgba(var(--a1),.35);flex-wrap:wrap;overflow:hidden;}
+header{position:sticky;top:0;z-index:100;min-height:56px;background:linear-gradient(120deg,rgb(var(--a1)),rgb(var(--a1d)),rgb(var(--shadow)),rgba(var(--a2),.13),rgb(var(--a1)));background-size:300% 300%;animation:headerflow 14s ease-in-out infinite;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:8px;box-shadow:0 2px 20px rgba(var(--a1),.35);flex-wrap:wrap;overflow:hidden;}
 header::after{content:'';position:absolute;top:0;left:-35%;width:35%;height:100%;background:linear-gradient(90deg,transparent,rgba(var(--a4),.14),transparent);animation:headersheen 7s ease-in-out infinite;pointer-events:none;}
 @keyframes headerflow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 @keyframes headersheen{0%{left:-35%;}100%{left:135%;}}
