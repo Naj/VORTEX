@@ -1173,17 +1173,42 @@ async function syncCall(path,method,body){
     headers:{'Content-Type':'application/json','X-Vortex-Token':c.token},
     body:body?JSON.stringify(body):undefined
   });
-  let payload=null;try{payload=await res.json();}catch(e){}
-  return{status:res.status,payload};
+  const ct=res.headers.get('content-type')||'';
+  let payload=null;
+  if(ct.includes('json')){try{payload=await res.json();}catch(e){}}
+  return{status:res.status,payload,ct};
+}
+
+/* Diagnostic : /api/health ne demande pas de jeton, il distingue donc
+   un problème d'adresse d'un problème de configuration du Worker. */
+async function syncHealth(){
+  const c=syncCfg();
+  if(!c.url)return{ok:false,msg:'Adresse manquante'};
+  try{
+    const res=await fetch(c.url+'/api/health');
+    const ct=res.headers.get('content-type')||'';
+    if(!ct.includes('json'))return{ok:false,msg:'Ce n\'est pas un Worker VORTEX'};
+    const j=await res.json();
+    if(!j.ok)return{ok:false,msg:'Réponse inattendue'};
+    if(!j.configured)return{ok:false,msg:'Worker incomplet : KV ou jeton manquant'};
+    return{ok:true};
+  }catch(e){return{ok:false,msg:'Adresse injoignable'};}
+}
+
+function syncFail(status,payload,ct){
+  if(status===401)return'Jeton refusé';
+  if(status===404)return'Adresse incorrecte (404)';
+  if(payload&&payload.error)return payload.error;
+  if(!ct.includes('json'))return'Réponse non JSON (cache ?)';
+  return'Erreur '+status;
 }
 
 async function syncPull(silent){
   if(!syncEnabled())return;
   syncStatus('Récupération…','busy');
   try{
-    const{status,payload}=await syncCall('/api/profile','GET');
-    if(status===401){syncStatus('Jeton refusé','err');return;}
-    if(status!==200||!payload){syncStatus('Serveur injoignable','err');return;}
+    const{status,payload,ct}=await syncCall('/api/profile','GET');
+    if(status!==200||!payload){syncStatus(syncFail(status,payload,ct),'err');return;}
     if(payload.rev>localRev()&&payload.data&&Array.isArray(payload.data.groups)){
       data=payload.data;setRev(payload.rev);
       persistLocalOnly();renderAll();
@@ -1199,16 +1224,15 @@ async function syncPush(silent){
   if(!syncEnabled()||syncBusy)return;
   syncBusy=true;syncStatus('Envoi…','busy');
   try{
-    const{status,payload}=await syncCall('/api/profile','PUT',{rev:localRev(),data});
-    if(status===200){setRev(payload.rev);syncStatus('Synchronisé · version '+payload.rev,'ok');}
+    const{status,payload,ct}=await syncCall('/api/profile','PUT',{rev:localRev(),data});
+    if(status===200&&payload){setRev(payload.rev);syncStatus('Synchronisé · version '+payload.rev,'ok');}
     else if(status===409&&payload&&payload.data){
       /* le serveur avait du neuf : on adopte sa version */
       data=payload.data;setRev(payload.rev);persistLocalOnly();renderAll();
       syncStatus('Version du cloud adoptée · '+payload.rev,'ok');
       if(!silent)toast('↻ Une version plus récente existait, elle a été chargée');
     }
-    else if(status===401)syncStatus('Jeton refusé','err');
-    else syncStatus('Échec de l\'envoi','err');
+    else syncStatus(syncFail(status,payload,ct),'err');
   }catch(e){syncStatus('Hors ligne','err');}
   syncBusy=false;
 }
@@ -1219,13 +1243,20 @@ function schedulePush(){
   syncTimer=setTimeout(()=>syncPush(true),1500);
 }
 function syncNow(){if(!syncEnabled()){toast('Renseignez l\'adresse et le jeton');return;}syncPull(false);}
-function saveSyncConfig(){
-  const u=document.getElementById('syncUrl').value.trim();
+async function saveSyncConfig(){
+  let u=document.getElementById('syncUrl').value.trim().replace(/\/+$/,'');
   const t=document.getElementById('syncToken').value.trim();
+  if(u&&!/^https?:\/\//i.test(u))u='https://'+u;      /* adresse saisie sans https:// */
+  u=u.replace(/\/api(\/.*)?$/,'');                     /* si l'adresse inclut déjà /api */
+  document.getElementById('syncUrl').value=u;
   localStorage.setItem(SYNC_URL_KEY,u);localStorage.setItem(SYNC_TOK_KEY,t);
   if(!u||!t){syncStatus('Non configuré','');toast('Synchronisation désactivée');return;}
   syncReady=false;
-  syncPull(false).then(()=>{syncReady=true;});
+  syncStatus('Vérification…','busy');
+  const h=await syncHealth();
+  if(!h.ok){syncStatus(h.msg,'err');syncReady=true;return;}
+  await syncPull(false);
+  syncReady=true;
   toast('✓ Paramètres enregistrés');
 }
 function initSyncUI(){
