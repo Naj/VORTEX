@@ -299,6 +299,24 @@ body.light .lcount{color:rgba(0,0,0,.4);background:rgba(0,0,0,.06);}
 .imp-choice b{display:block;font-size:13.5px;color:#1a1a1a;margin-bottom:3px;}
 .imp-choice span{display:block;font-size:11.5px;color:#666;line-height:1.45;}
 .imp-choice.danger:hover{background:#fdf0f6;border-color:rgb(var(--a3));}
+.pend-modal{width:520px;max-width:95vw;}
+.pend-intro{font-size:12.5px;color:#555;line-height:1.5;margin:0 0 10px;}
+.pend-tools{display:flex;gap:6px;margin-bottom:8px;}
+.pend-tool{background:#f2f2f5;border:1px solid #e4e4ea;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:600;color:#444;cursor:pointer;font-family:inherit;}
+.pend-tool:hover{background:#e9e7f1;}
+.pend-list{max-height:46vh;overflow-y:auto;border:1px solid #eee;border-radius:10px;padding:6px;background:#fafafc;}
+.pend-folder{margin-bottom:8px;}
+.pend-fhd{display:flex;align-items:center;justify-content:space-between;padding:5px 6px;border-bottom:1px solid #ececf2;margin-bottom:3px;}
+.pend-check{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#333;cursor:pointer;}
+.pend-n{font-size:10.5px;font-weight:700;color:#888;background:#eee;border-radius:9px;padding:1px 7px;}
+.pend-item{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:7px;cursor:pointer;font-size:12px;}
+.pend-item:hover{background:#f0edf8;}
+.pend-lbl{flex:1;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pend-url{font-size:10.5px;color:#999;flex:none;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pend-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;}
+.bc.danger-txt{color:#a51d24;}
+.ign-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;color:#666;margin-top:10px;padding-top:10px;border-top:1px solid #eee;}
+.ign-reset{background:none;border:none;color:var(--orange-d);text-decoration:underline;font-size:11.5px;cursor:pointer;font-family:inherit;padding:0;}
 
 /* ── DOSSIERS & NAVIGATION ── */
 #breadcrumb{display:none;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;flex:none;}
@@ -482,6 +500,10 @@ button.bc-item:hover{background:rgba(var(--a1),.4);}
         <button class="sync-b" onclick="saveSyncConfig()">Enregistrer</button>
         <button class="sync-b alt" onclick="syncNow()">Synchroniser</button>
       </div>
+      <div class="ign-row">
+        <span>Favoris ignorés : <b id="ignoredCount">0</b></span>
+        <button class="ign-reset" onclick="resetIgnored()">Réinitialiser</button>
+      </div>
     </div>
     <div class="th-wrap">
       <span class="th-label">Animation de fond</span>
@@ -608,6 +630,23 @@ button.bc-item:hover{background:rgba(var(--a1),.4);}
 </div>
 
 <div class="ctx" id="floatingMenu"></div>
+
+<div class="overlay" id="pendingModal">
+  <div class="modal pend-modal">
+    <h3>📥 Nouveaux favoris détectés</h3>
+    <p class="pend-intro"><b id="pendCount">0</b> favori(s) de votre navigateur ne sont pas dans VORTEX. Cochez ceux que vous voulez ajouter.</p>
+    <div class="pend-tools">
+      <button class="pend-tool" onclick="pendSelectAll(true)">Tout cocher</button>
+      <button class="pend-tool" onclick="pendSelectAll(false)">Tout décocher</button>
+    </div>
+    <div class="pend-list" id="pendList"></div>
+    <div class="pend-foot">
+      <button class="bc" onclick="laterPending()" title="Ne rien décider maintenant : reproposé plus tard">Plus tard</button>
+      <button class="bc danger-txt" onclick="ignoreAllPending()" title="Ne plus jamais proposer ces favoris">Tout ignorer</button>
+      <button class="bok" onclick="confirmPending()">Ajouter la sélection</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -1224,6 +1263,7 @@ async function syncPull(silent){
       await syncPush(true);
     }
     syncStatus('Synchronisé · version '+Math.max(payload.rev,localRev()),'ok');
+    fetchPending();
   }catch(e){syncStatus('Hors ligne','err');}
 }
 
@@ -1310,28 +1350,106 @@ window.addEventListener('message',e=>{
   receiveBrowserBookmarks(d.folders);
 });
 
+function ignoredSet(){if(!Array.isArray(data.ignoredUrls))data.ignoredUrls=[];return new Set(data.ignoredUrls);}
+
+/* Pont local (sans Worker) : on calcule les favoris en attente et on propose la sélection */
 function receiveBrowserBookmarks(folders){
-  /* Premier branchement si VORTEX n'a encore aucun groupe.
-     On laisse d'abord VORTEX pousser son vrai profil. */
-  const firstRun=data.groups.length===0;
-  if(firstRun){
-    toast('✓ Extension connectée — les prochains favoris arriveront ici');
-    return;
-  }
-  let added=0,newCards=0,idc=Date.now();
-  folders.forEach(fd=>{
-    fd.links.forEach(l=>{
-      /* On accepte un lien si et seulement s'il n'existe PAS déjà dans une carte.
-         S'il a été supprimé, il n'y est plus → il sera accepté de nouveau. */
-      if(urlExistsAnywhere(l.url))return;
-      let g=data.groups.find(x=>!x.note&&!isFolder(x)&&x.name.toLowerCase()===fd.name.toLowerCase());
-      if(!g){g={id:idc++,name:fd.name,color:FC[data.groups.length%FC.length],links:[],parent:null};data.groups.push(g);newCards++;}
-      if(!g.links)g.links=[];
-      g.links.push({label:l.label,url:l.url});
-      added++;
-    });
+  if(data.groups.length===0){toast('✓ Extension connectée');return;}
+  const ign=ignoredSet();
+  const items=[],seen=new Set();
+  folders.forEach(fd=>(fd.links||[]).forEach(l=>{
+    if(!l||!l.url||seen.has(l.url))return;
+    seen.add(l.url);
+    if(ign.has(l.url))return;
+    if(urlExistsAnywhere(l.url))return;
+    items.push({folder:fd.name,label:l.label,url:l.url});
+  }));
+  if(items.length)openPendingModal(items);
+}
+
+/* ═══ FENÊTRE DE SÉLECTION DES FAVORIS EN ATTENTE ═══ */
+let pendingItems=[];
+function openPendingModal(items){
+  pendingItems=items;
+  const byFolder=new Map();
+  items.forEach((it,i)=>{
+    if(!byFolder.has(it.folder))byFolder.set(it.folder,[]);
+    byFolder.get(it.folder).push({...it,i});
   });
-  if(added){renderAll();toast(`✓ ${added} nouveau(x) favori(s) synchronisé(s)${newCards?` · ${newCards} carte(s) créée(s)`:''}`);}
+  document.getElementById('pendCount').textContent=items.length;
+  document.getElementById('pendList').innerHTML=[...byFolder.entries()].map(([folder,list])=>`
+    <div class="pend-folder">
+      <div class="pend-fhd">
+        <label class="pend-check"><input type="checkbox" checked onchange="togglePendFolder(this,'${folder.replace(/'/g,"\\'")}')"> <b>📁 ${folder}</b></label>
+        <span class="pend-n">${list.length}</span>
+      </div>
+      ${list.map(it=>`<label class="pend-item"><input type="checkbox" class="pend-cb" data-folder="${folder.replace(/"/g,'&quot;')}" value="${it.i}" checked><span class="pend-lbl">${it.label}</span><span class="pend-url">${it.url.replace(/^https?:\/\//,'').slice(0,40)}</span></label>`).join('')}
+    </div>`).join('');
+  document.getElementById('pendingModal').classList.add('open');
+}
+function togglePendFolder(cb,folder){
+  document.querySelectorAll(`.pend-cb[data-folder="${folder.replace(/"/g,'&quot;')}"]`).forEach(x=>{x.checked=cb.checked;});
+}
+function pendSelectAll(v){
+  document.querySelectorAll('.pend-cb').forEach(x=>{x.checked=v;});
+  document.querySelectorAll('.pend-fhd input').forEach(x=>{x.checked=v;});
+}
+function confirmPending(){
+  const checked=new Set([...document.querySelectorAll('.pend-cb:checked')].map(x=>Number(x.value)));
+  if(!Array.isArray(data.ignoredUrls))data.ignoredUrls=[];
+  let added=0,newCards=0,ignored=0,idc=Date.now();
+  pendingItems.forEach((it,i)=>{
+    if(!checked.has(i)){
+      /* refusé : on le mémorise pour ne plus le proposer */
+      if(!data.ignoredUrls.includes(it.url)){data.ignoredUrls.push(it.url);ignored++;}
+      return;
+    }
+    if(urlExistsAnywhere(it.url))return;
+    let g=data.groups.find(x=>!x.note&&!isFolder(x)&&x.name.toLowerCase()===String(it.folder).toLowerCase());
+    if(!g){g={id:idc++,name:it.folder,color:FC[data.groups.length%FC.length],links:[],parent:null};data.groups.push(g);newCards++;}
+    if(!g.links)g.links=[];
+    g.links.push({label:it.label,url:it.url});
+    added++;
+  });
+  pendingItems=[];
+  closeModal('pendingModal');
+  renderAll();
+  updateIgnoredCount();
+  toast(`✓ ${added} ajouté(s)${ignored?` · ${ignored} ignoré(s)`:''}`);
+}
+function ignoreAllPending(){
+  if(!Array.isArray(data.ignoredUrls))data.ignoredUrls=[];
+  let n=0;
+  pendingItems.forEach(it=>{if(!data.ignoredUrls.includes(it.url)){data.ignoredUrls.push(it.url);n++;}});
+  pendingItems=[];
+  closeModal('pendingModal');
+  persistData();updateIgnoredCount();
+  toast(`${n} favori(s) ignoré(s) — ils ne seront plus proposés`);
+}
+function laterPending(){pendingItems=[];closeModal('pendingModal');}
+
+function updateIgnoredCount(){
+  const el=document.getElementById('ignoredCount');
+  if(el)el.textContent=(data.ignoredUrls||[]).length;
+}
+function resetIgnored(){
+  const n=(data.ignoredUrls||[]).length;
+  if(!n){toast('Aucun favori ignoré');return;}
+  if(!confirm(`Réinitialiser la liste des ${n} favori(s) ignoré(s) ?\n\nIls vous seront proposés à nouveau lors de la prochaine synchronisation.`))return;
+  data.ignoredUrls=[];
+  persistData();updateIgnoredCount();
+  toast('✓ Liste des ignorés vidée');
+}
+
+/* Récupère la file d'attente depuis le Worker */
+async function fetchPending(){
+  if(!syncEnabled())return;
+  try{
+    const{status,payload}=await syncCall('/api/pending','GET');
+    if(status===200&&payload&&Array.isArray(payload.items)&&payload.items.length){
+      openPendingModal(payload.items);
+    }
+  }catch(e){}
 }
 
 function themeFC(){const c=n=>`rgb(${getComputedStyle(document.documentElement).getPropertyValue(n).trim()})`;return[c('--a1'),c('--a2'),c('--a1d'),c('--a5'),c('--a3'),c('--a4')];}
@@ -1602,6 +1720,7 @@ applyTheme();
 applyScene();
 renderAll();
 initSyncUI();
+updateIgnoredCount();
 </script>
 </body>
 </html>
