@@ -1301,9 +1301,6 @@ function initSyncUI(){
 function cancelImport(){pendingImport=null;closeModal('importModal');}
 
 /* ═══ PONT EXTENSION NAVIGATEUR (VORTEX Sync) ═══ */
-const SYNC_KEY='vortex-synced-urls';
-function loadSynced(){try{return new Set(JSON.parse(localStorage.getItem(SYNC_KEY)||'[]'));}catch(e){return new Set();}}
-function saveSynced(set){try{localStorage.setItem(SYNC_KEY,JSON.stringify([...set]));}catch(e){}}
 function urlExistsAnywhere(url){return data.groups.some(g=>(g.links||[]).some(l=>l.url===url));}
 
 window.addEventListener('message',e=>{
@@ -1314,23 +1311,19 @@ window.addEventListener('message',e=>{
 });
 
 function receiveBrowserBookmarks(folders){
-  const synced=loadSynced();
-  /* Premier branchement : on enregistre l'existant sans rien ajouter,
-     pour ne pas dupliquer ce qui a déjà été importé manuellement.
-     Seuls les favoris créés ENSUITE seront ajoutés automatiquement. */
-  const firstRun=!localStorage.getItem(SYNC_KEY);
+  /* Premier branchement si VORTEX n'a encore aucun groupe.
+     On laisse d'abord VORTEX pousser son vrai profil. */
+  const firstRun=data.groups.length===0;
   if(firstRun){
-    folders.forEach(f=>f.links.forEach(l=>synced.add(l.url)));
-    saveSynced(synced);
     toast('✓ Extension connectée — les prochains favoris arriveront ici');
     return;
   }
   let added=0,newCards=0,idc=Date.now();
   folders.forEach(fd=>{
     fd.links.forEach(l=>{
-      if(synced.has(l.url))return;          /* déjà traité une fois */
-      synced.add(l.url);
-      if(urlExistsAnywhere(l.url))return;   /* déjà présent dans une carte */
+      /* On accepte un lien si et seulement s'il n'existe PAS déjà dans une carte.
+         S'il a été supprimé, il n'y est plus → il sera accepté de nouveau. */
+      if(urlExistsAnywhere(l.url))return;
       let g=data.groups.find(x=>!x.note&&!isFolder(x)&&x.name.toLowerCase()===fd.name.toLowerCase());
       if(!g){g={id:idc++,name:fd.name,color:FC[data.groups.length%FC.length],links:[],parent:null};data.groups.push(g);newCards++;}
       if(!g.links)g.links=[];
@@ -1338,7 +1331,6 @@ function receiveBrowserBookmarks(folders){
       added++;
     });
   });
-  saveSynced(synced);
   if(added){renderAll();toast(`✓ ${added} nouveau(x) favori(s) synchronisé(s)${newCards?` · ${newCards} carte(s) créée(s)`:''}`);}
 }
 
