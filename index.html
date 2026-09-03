@@ -1190,6 +1190,8 @@ async function syncHealth(){
     if(!ct.includes('json'))return{ok:false,msg:'Ce n\'est pas un Worker VORTEX'};
     const j=await res.json();
     if(!j.ok)return{ok:false,msg:'Réponse inattendue'};
+    if(j.hasToken===false)return{ok:false,msg:'Secret SYNC_TOKEN non déployé'};
+    if(j.hasKV===false)return{ok:false,msg:'Liaison VORTEX_KV manquante'};
     if(!j.configured)return{ok:false,msg:'Worker incomplet : KV ou jeton manquant'};
     return{ok:true};
   }catch(e){return{ok:false,msg:'Adresse injoignable'};}
@@ -1210,14 +1212,43 @@ async function syncPull(silent){
     const{status,payload,ct}=await syncCall('/api/profile','GET');
     if(status!==200||!payload){syncStatus(syncFail(status,payload,ct),'err');return;}
     if(payload.rev>localRev()&&payload.data&&Array.isArray(payload.data.groups)){
-      data=payload.data;setRev(payload.rev);
+      /* Fusion : les groupes du cloud s'ajoutent aux groupes locaux.
+         Si un groupe de même nom existe déjà localement, les liens manquants
+         y sont ajoutés (sans doublons). Rien n'est supprimé. */
+      const merged=mergeProfiles(data.groups, payload.data.groups);
+      data.groups=merged;
+      setRev(payload.rev);
       persistLocalOnly();renderAll();
-      if(!silent)toast('✓ Profil récupéré depuis le cloud');
+      if(!silent)toast('✓ Profil synchronisé avec le cloud');
     }else if(localRev()>payload.rev){
       await syncPush(true);
     }
     syncStatus('Synchronisé · version '+Math.max(payload.rev,localRev()),'ok');
   }catch(e){syncStatus('Hors ligne','err');}
+}
+
+/* Fusionne deux listes de groupes sans perdre ni écraser aucune donnée locale.
+   Les groupes cloud absents en local sont ajoutés.
+   Les liens cloud absents dans un groupe local sont ajoutés.
+   Les groupes locaux non présents dans le cloud sont conservés intacts. */
+function mergeProfiles(local, cloud){
+  const result=[...local];
+  cloud.forEach(cg=>{
+    const lg=result.find(x=>!x.note&&!isFolder(x)&&String(x.name).toLowerCase()===String(cg.name).toLowerCase());
+    if(!lg){
+      /* groupe absent en local : on l'ajoute */
+      result.push(cg);
+    } else {
+      /* groupe présent : on ajoute les liens manquants */
+      if(cg.links&&cg.links.length){
+        if(!lg.links)lg.links=[];
+        cg.links.forEach(cl=>{
+          if(!lg.links.some(ll=>ll.url===cl.url))lg.links.push(cl);
+        });
+      }
+    }
+  });
+  return result;
 }
 
 async function syncPush(silent){
